@@ -6,7 +6,6 @@
 #include <chrono>
 #include <queue>
 
-
 using Embedding_T = float;
 
 float distance(const Embedding_T &a, const Embedding_T &b);
@@ -48,8 +47,6 @@ Node *buildKD(std::vector<std::pair<Embedding_T, int>> &items, int depth = 0);
  */
 using PQItem = std::pair<float, int>;
 
-
-
 void freeTree(Node *node);
 
 /**
@@ -60,7 +57,6 @@ void freeTree(Node *node);
  * as the comparison function, resulting in a max-heap behavior.
  */
 using MaxHeap = std::priority_queue<PQItem, std::vector<PQItem>, std::less<PQItem>>;
-
 
 /**
  * @brief Performs a k-nearest neighbors (k-NN) search on a KD-tree.
@@ -76,7 +72,7 @@ using MaxHeap = std::priority_queue<PQItem, std::vector<PQItem>, std::less<PQIte
  * @param epsilon Approximation factor for the search (0 for exact search).
  * @param heap Reference to a max-heap that stores the current K nearest neighbors found.
  */
- void knnSearch(Node *node,
+void knnSearch(Node *node,
                int depth,
                int K,
                MaxHeap &heap);

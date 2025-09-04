@@ -66,10 +66,47 @@ void knnSearch(Node *node,
                int K,
                MaxHeap &heap)
 {
-    /*
-    TODO: Implement this function to perform k-nearest neighbors (k-NN) search on the KD-tree.
-    You should recursively traverse the tree and maintain a max-heap of the K closest points found so far.
-    For now, this is a stub that does nothing.
-    */
+    if (!node)
+        return;
+
+    // get query
+    const float query = Node::queryEmbedding;
+
+    // recursively search the near subtree
+    Node *near;
+    Node *far;
+    if (query < node->embedding)
+    {
+        near = node->left;
+        far = node->right;
+    }
+    else
+    {
+        near = node->right;
+        far = node->left;
+    }
+
+    knnSearch(near, depth + 1, K, heap);
+
+    // process current node
+    float dist = distance(node->embedding, query);
+
+    if ((int)heap.size() < K)
+    {
+        heap.push(PQItem{dist, node->idx});
+    }
+    else if (heap.top().first > dist)
+    {
+        heap.pop();
+        heap.push(PQItem{dist, node->idx});
+    }
+
+    // selectively decide whether to search far subtree
+    float planeDist = distance(query, node->embedding);
+    if ((int)heap.size() < K || planeDist < heap.top().first)
+    {
+        knnSearch(far, depth + 1, K, heap);
+    }
+
     return;
 }

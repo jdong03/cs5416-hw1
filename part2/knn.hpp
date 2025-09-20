@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -5,7 +6,6 @@
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <queue>
-
 
 template <typename T, typename = void>
 struct Embedding_T;
@@ -22,9 +22,9 @@ struct Embedding_T<float>
     }
 };
 
-
 // dynamic vector: runtime-D (global, set once at startup)
-inline size_t& runtime_dim() {
+inline size_t &runtime_dim()
+{
     static size_t d = 0;
     return d;
 }
@@ -34,7 +34,7 @@ template <>
 struct Embedding_T<std::vector<float>>
 {
     static size_t Dim() { return runtime_dim(); }
-    
+
     static float distance(const std::vector<float> &a,
                           const std::vector<float> &b)
     {
@@ -48,17 +48,19 @@ struct Embedding_T<std::vector<float>>
     }
 };
 
-
 // extract the “axis”-th coordinate or the scalar itself
-template<typename T>
-constexpr float getCoordinate(T const &e, size_t axis) {
-    if constexpr (std::is_same_v<T, float>) {
-        return e;          // scalar case
-    } else {
-        return e[axis];    // vector case
+template <typename T>
+constexpr float getCoordinate(T const &e, size_t axis)
+{
+    if constexpr (std::is_same_v<T, float>)
+    {
+        return e; // scalar case
+    }
+    else
+    {
+        return e[axis]; // vector case
     }
 }
-
 
 // KD-tree node
 template <typename T>
@@ -78,7 +80,6 @@ struct Node
 template <typename T>
 T Node<T>::queryEmbedding;
 
-
 /**
  * Builds a KD-tree from a vector of items,
  * where each item consists of an embedding and its associated index.
@@ -91,19 +92,59 @@ T Node<T>::queryEmbedding;
  */
 // Build a balanced KD‐tree by splitting on median at each level.
 template <typename T>
-Node<T>* buildKD(std::vector<std::pair<T,int>>& items, int depth = 0)
+Node<T> *buildKD(std::vector<std::pair<T, int>> &items, int depth = 0)
 {
-    /*
-    TODO: Implement this function to build a balanced KD-tree.
-    You should recursively construct the tree and return the root node.
-    For now, this is a stub that returns nullptr.
-    */
-    return nullptr;
+    if (items.empty())
+        return nullptr;
+
+    // set splittingAxis to be d % k for k-d data
+    const size_t k = Embedding_T<T>::Dim();
+    const size_t splittingAxis = depth % k;
+
+    // compare function, comparing starting with splittingAxis
+    auto cmp = [splittingAxis, k](const std::pair<T, int> &a, const std::pair<T, int> &b)
+    {
+        for (size_t off = 0; off < k; ++off)
+        {
+            const size_t dim = (splittingAxis + off) % k;
+            const float va = getCoordinate(a.first, dim);
+            const float vb = getCoordinate(b.first, dim);
+            if (va < vb)
+                return true;
+            if (va > vb)
+                return false;
+        }
+        return a.second < b.second;
+    };
+
+    // sort by splittingAxis in embedding
+    std::sort(items.begin(), items.end(), cmp);
+
+    // find median value using median index = size / 2
+    std::size_t size = items.size();
+    std::size_t mid = (size - 1) / 2;
+    std::pair<T, int> median = items[mid];
+
+    // build root node using median value
+    Node<T> *root = new Node<T>();
+    root->embedding = median.first;
+    root->idx = median.second;
+
+    // recursively build subtrees using left/right slices of vector
+    std::vector<std::pair<T, int>> left(items.begin(), items.begin() + mid);
+    std::vector<std::pair<T, int>> right(items.begin() + mid + 1, items.end());
+
+    root->left = buildKD(left, depth + 1);
+    root->right = buildKD(right, depth + 1);
+
+    return root;
 }
 
 template <typename T>
-void freeTree(Node<T> *node) {
-    if (!node) return;
+void freeTree(Node<T> *node)
+{
+    if (!node)
+        return;
     freeTree(node->left);
     freeTree(node->right);
     delete node;
@@ -117,7 +158,6 @@ void freeTree(Node<T> *node) {
  * represents an associated index of the embedding.
  */
 using PQItem = std::pair<float, int>;
-
 
 /**
  * @brief Alias for a max-heap priority queue of PQItem elements.
@@ -151,10 +191,51 @@ void knnSearch(Node<T> *node,
                int K,
                MaxHeap &heap)
 {
-    /*
-    TODO: Implement this function to perform k-nearest neighbors (k-NN) search on the KD-tree.
-    You should recursively traverse the tree and maintain a max-heap of the K closest points found so far.
-    For now, this is a stub that does nothing.
-    */
+    if (!node)
+        return;
+
+    // get query
+    const T &query = Node<T>::queryEmbedding;
+
+    // set splittingAxis to be d % k for k-d data
+    const size_t k = Embedding_T<T>::Dim();
+    const size_t splittingAxis = depth % k;
+
+    // process current node
+    const float dist = Embedding_T<T>::distance(node->embedding, query);
+
+    if ((int)heap.size() < K)
+    {
+        heap.push(PQItem{dist, node->idx});
+    }
+    else if (heap.top().first > dist)
+    {
+        heap.pop();
+        heap.push(PQItem{dist, node->idx});
+    }
+
+    // recursively search the near subtree
+    Node<T> *near;
+    Node<T> *far;
+    if (getCoordinate(query, splittingAxis) < getCoordinate(node->embedding, splittingAxis))
+    {
+        near = node->left;
+        far = node->right;
+    }
+    else
+    {
+        near = node->right;
+        far = node->left;
+    }
+
+    knnSearch(near, depth + 1, K, heap);
+
+    // selectively decide whether to search far subtree
+    const float planeDist = std::abs(getCoordinate(query, splittingAxis) - getCoordinate(node->embedding, splittingAxis));
+    if ((int)heap.size() < K || planeDist < heap.top().first)
+    {
+        knnSearch(far, depth + 1, K, heap);
+    }
+
     return;
 }

@@ -1,7 +1,7 @@
 # Makefile for building knn_arglib
 
 CXX = g++
-CXXFLAGS = -std=c++11 -Ialglib-cpp/src
+CXXFLAGS = -std=c++11 -O3 -Ialglib-cpp/src
 SRC = main.cpp alglib-cpp/src/*.cpp
 TARGET = main
 

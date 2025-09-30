@@ -5,11 +5,20 @@
 #include "alglibmisc.h"
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <unordered_map>
 
 using json = nlohmann::json;
 
+template <class Dur>
+inline double ms(Dur dur)
+{
+    return std::chrono::duration<double, std::milli>(dur).count();
+}
+
 int main(int argc, char *argv[])
 {
+    using clock = std::chrono::high_resolution_clock;
+
     auto program_start = std::chrono::high_resolution_clock::now();
 
     if (argc != 5)
@@ -90,23 +99,25 @@ int main(int argc, char *argv[])
 
             const auto &emb = item["embedding"];
 
-            if (emb.size() != D)
-            {
-                throw std::runtime_error("Inconsistent embedding dimension at row " + std::to_string(i));
-            }
             for (size_t d = 0; d < D; ++d)
             {
                 allPoints((alglib::ae_int_t)i, (alglib::ae_int_t)d) = emb[d].get<double>();
             }
         }
 
+        auto processing_end = clock::now();
+
         // 2. Build the KD-tree (alglib::kdtree) from the passages embeddings using alglib::buildkdtree
+        auto build_start = clock::now();
         alglib::kdtree tree;
         alglib::kdtreebuildtagged(allPoints, tags, (int)N_points, (int)D, 0, 2, tree);
+        auto build_end = clock::now();
 
         // 3. Perform the k-NN search using alglib::knnsearch
+        auto knn_start = clock::now();
         alglib::ae_int_t count = alglib::kdtreequeryaknn(tree, query, k, eps);
-        std::cout << "Performed k-NN search using alglib::knntreequeryaknn. Count: " << count << std::endl;
+        auto knn_end = clock::now();
+        std::cout << "Performed k-NN search using alglib::kdtreequeryaknn. Count: " << count << std::endl;
 
         // 4. Query the results
         //     - Get the index of each found neighbour  using alglib::kdtreequeryresultstags
@@ -123,6 +134,19 @@ int main(int argc, char *argv[])
         {
             std::cout << "Neighbor " << i + 1 << ": id = " << idx[i] << ", dist = " << dist[i] << std::endl;
         }
+
+        // Report Timing
+        auto program_end = clock::now();
+        double t_total_ms = ms(program_end - program_start);
+        double t_parse_ms = ms(processing_end - processing_start);
+        double t_build_ms = ms(build_end - build_start);
+        double t_knn_ms = ms(knn_end - knn_start);
+
+        std::cout << "\n--- Timing (ms) ---\n";
+        std::cout << "Total elapsed:            " << t_total_ms << " ms\n";
+        std::cout << "Process & parse input:    " << t_parse_ms << " ms\n";
+        std::cout << "Build k-d tree:           " << t_build_ms << " ms\n";
+        std::cout << "KNN search:               " << t_knn_ms << " ms\n";
     }
     catch (alglib::ap_error &e)
     {
